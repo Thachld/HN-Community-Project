@@ -15,7 +15,7 @@ public with sharing class GetTrailblazerInfoAsync implements Database.Batchable<
     public Database.QueryLocator start(Database.BatchableContext bc){
         return Database.getQueryLocator([SELECT Id, Trailhead_username__c,Points__c, Profile_Photo__c,Rank__c,Rank_Badge_Link__c,Superbadges__c,
                                         Trails__c,Certifications__c,Badges__c, Trailblazer_Since__c
-                                        FROM Contact WHERE Trailhead_username__c != null and Id = '0035g000003VCDNAA4']);
+                                        FROM Contact WHERE Trailhead_username__c != null]);
     }
 
     public void execute(Database.BatchableContext bc, List<Contact> scope){
@@ -36,36 +36,36 @@ public with sharing class GetTrailblazerInfoAsync implements Database.Batchable<
         List<Certification__c> upSertCerts = new List<Certification__c>();
 
         for(Contact trail: scope){
-            System.debug('trail.Trailhead_username__c=>' + trail.Trailhead_username__c);
+            
             if(!String.isBlank(trail.Trailhead_username__c)){
                 mapContact.put(trail.Trailhead_username__c, trail.Id);
 
-                String baseEndPoint = CalloutConstant.GO_TRAILHEAD_API + '/' + trail.Trailhead_username__c;                
-
+                String baseEndPoint = CalloutConstant.GO_TRAILHEAD_API + trail.Trailhead_username__c;                
+                System.debug('baseEndPoint=>' + baseEndPoint);
                 HttpResponse profileRes = HttpCallout.makeRequest(setupCalloutGetProfile(baseEndPoint));
                 HttpResponse profileDataRes = HttpCallout.makeRequest(setupCalloutGetProfileData(baseEndPoint));
                 HttpResponse certDataRes = HttpCallout.makeRequest(setupCalloutGetCertification(baseEndPoint));
                 HttpResponse supperBadgeDataRes = HttpCallout.makeRequest(setupCalloutGetSupperbadge(baseEndPoint));
 
-                // System.debug('profileRes.getStatus()' + profileRes.getStatus());
-                // if(profileRes.getStatus() == '200'){
+                System.debug('profileRes.getStatus()' + profileRes.getStatus());
+                if(profileRes.getStatus() == 'OK'){
                     mapprofileRes.put(trail.Trailhead_username__c, profileRes);
-                // }
+                }
 
                 // System.debug('profileDataRes.getStatus()=>' + profileDataRes.getStatus());
-                // if(profileDataRes.getStatus() == '200'){
+                if(profileDataRes.getStatus() == 'OK'){
                     mapprofileDataRes.put(trail.Trailhead_username__c, profileDataRes);
-                // }
+                }
 
-                System.debug('certDataRes.getStatus()=>' + certDataRes.getStatus());
-                // if(certDataRes.getStatus() == '200'){
+                // System.debug('certDataRes.getStatus()=>' + certDataRes.getStatus());
+                if(certDataRes.getStatus() == 'OK'){
                     mapcertDataRes.put(trail.Trailhead_username__c, certDataRes);
-                // }
+                }
 
                 // System.debug('supperBadgeDataRes.getStatus()=>' + supperBadgeDataRes.getStatus());
-                // if(supperBadgeDataRes.getStatus() == '200'){
+                if(supperBadgeDataRes.getStatus() == 'OK'){
                     mapsupperBadgeDataRes.put(trail.Trailhead_username__c, supperBadgeDataRes);
-                // }
+                }
             }
         }
 
@@ -77,6 +77,8 @@ public with sharing class GetTrailblazerInfoAsync implements Database.Batchable<
             
             if (resBody.contains(CalloutConstant.HEROKU_ERROR) || String.isBlank(resBody)) {
                 System.debug('Application Error, please try again. API may be down.');
+                System.debug(resBody);
+
             }else {
                 ProfileData data = (ProfileData)JSON.deserialize(resBody.replaceAll('__c', ''), ProfileData.class);
                 mapProfiles.put(profileId, data);
@@ -127,13 +129,13 @@ public with sharing class GetTrailblazerInfoAsync implements Database.Batchable<
             if(!String.isBlank(trail.Trailhead_username__c)){
 
                 //Profile Info
-                ProfileData profile = mapProfiles.get(trail.Trailhead_username__c);
+                ProfileData profile = mapProfiles.get(trail.Trailhead_username__c);              
 
-                if(profile != null && !String.isBlank(profile.error)){                   
+                if(profile != null && String.isBlank(profile.error)){                   
                     trail.Profile_Photo__c = profile.profilePhotoUrl;
                     trail.Profile_Handle__c = profile.profileUser.TrailblazerId;
                     trail.Company__c = profile.profileUser.CompanyName;
-                    trail.Title = profile.profileUser.BID_Role;                  
+                    trail.Title = profile.profileUser.TBID_Role;                  
 
                     if (!String.isBlank(profile.profileUser.TrailblazerId)) {
                         trail.Profile_Link__c = CalloutConstant.TRAILHEAD_ME + profile.profileUser.TrailblazerId;
@@ -196,7 +198,7 @@ public with sharing class GetTrailblazerInfoAsync implements Database.Batchable<
                             Supperbadge__c supper = new Supperbadge__c();
                             supper.ImageUrl__c = award.Award.ImageUrl;
                             supper.Name = award.Award.Label;
-                            supper.SupperbadgeId__c = award.Award.Id;  
+                            supper.SupperbadgeId__c = award.Award.Id+trail.Id;  
                             supper.Trailblazer__c = trail.Id;             
                             upSertsupperBadges.add(supper);
 
@@ -239,6 +241,7 @@ public with sharing class GetTrailblazerInfoAsync implements Database.Batchable<
         String restMethod = 'GET';      
         String endpoint = baseEndPoint + CalloutConstant.PROFILE_PATH;          
         Callout callout = new Callout('', endpoint, restMethod, null);    
+
 
         HttpRequest req = HttpCallout.setupHttpRequest(callout);
 

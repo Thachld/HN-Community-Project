@@ -10,7 +10,7 @@ public class ProfileData {
     public profileUser profileUser { get; set; }
 
     public class profileUser {
-        public String BID_Role { get; set; }
+        public String TBID_Role { get; set; }
         public String CompanyName { get; set; }
         public String TrailblazerId { get; set; }
         public String Title { get; set; }
