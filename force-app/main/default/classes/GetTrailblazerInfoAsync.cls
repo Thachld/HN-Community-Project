@@ -5,7 +5,7 @@
 * Getting Trailblazer information.
 */
 
-public with sharing class GetTrailblazerInfoAsync implements Database.Batchable<SObject>{
+public with sharing class GetTrailblazerInfoAsync implements Database.Batchable<SObject>, Database.AllowsCallouts{
     
     public GetTrailblazerInfoAsync() {
 
@@ -15,7 +15,7 @@ public with sharing class GetTrailblazerInfoAsync implements Database.Batchable<
     public Database.QueryLocator start(Database.BatchableContext bc){
         return Database.getQueryLocator([SELECT Id, Trailhead_username__c,Points__c, Profile_Photo__c,Rank__c,Rank_Badge_Link__c,Superbadges__c,
                                         Trails__c,Certifications__c,Badges__c, Trailblazer_Since__c
-                                        FROM Contact WHERE Trailhead_username__c != null]);
+                                        FROM Contact WHERE Trailhead_username__c != null and Id = '0035g000003VCDNAA4']);
     }
 
     public void execute(Database.BatchableContext bc, List<Contact> scope){
@@ -36,7 +36,7 @@ public with sharing class GetTrailblazerInfoAsync implements Database.Batchable<
         List<Certification__c> upSertCerts = new List<Certification__c>();
 
         for(Contact trail: scope){
-
+            System.debug('trail.Trailhead_username__c=>' + trail.Trailhead_username__c);
             if(!String.isBlank(trail.Trailhead_username__c)){
                 mapContact.put(trail.Trailhead_username__c, trail.Id);
 
@@ -47,21 +47,25 @@ public with sharing class GetTrailblazerInfoAsync implements Database.Batchable<
                 HttpResponse certDataRes = HttpCallout.makeRequest(setupCalloutGetCertification(baseEndPoint));
                 HttpResponse supperBadgeDataRes = HttpCallout.makeRequest(setupCalloutGetSupperbadge(baseEndPoint));
 
-                if(profileRes.getStatus() == '200'){
+                // System.debug('profileRes.getStatus()' + profileRes.getStatus());
+                // if(profileRes.getStatus() == '200'){
                     mapprofileRes.put(trail.Trailhead_username__c, profileRes);
-                }
+                // }
 
-                if(profileDataRes.getStatus() == '200'){
+                // System.debug('profileDataRes.getStatus()=>' + profileDataRes.getStatus());
+                // if(profileDataRes.getStatus() == '200'){
                     mapprofileDataRes.put(trail.Trailhead_username__c, profileDataRes);
-                }
+                // }
 
-                if(certDataRes.getStatus() == '200'){
+                System.debug('certDataRes.getStatus()=>' + certDataRes.getStatus());
+                // if(certDataRes.getStatus() == '200'){
                     mapcertDataRes.put(trail.Trailhead_username__c, certDataRes);
-                }
+                // }
 
-                if(supperBadgeDataRes.getStatus() == '200'){
+                // System.debug('supperBadgeDataRes.getStatus()=>' + supperBadgeDataRes.getStatus());
+                // if(supperBadgeDataRes.getStatus() == '200'){
                     mapsupperBadgeDataRes.put(trail.Trailhead_username__c, supperBadgeDataRes);
-                }
+                // }
             }
         }
 
@@ -179,7 +183,8 @@ public with sharing class GetTrailblazerInfoAsync implements Database.Batchable<
                 //Supper badges
                 BadgeData supperBadgedata = mapSupBadges.get(trail.Trailhead_username__c);               
 
-                if (supperBadgedata.value != null 
+                if ( supperBadgedata != null
+                    && supperBadgedata.value != null 
                     && !supperBadgedata.value.isEmpty() 
                     && supperBadgedata.value[0].EarnedAwards != null 
                     && !supperBadgedata.value[0].EarnedAwards.isEmpty()
