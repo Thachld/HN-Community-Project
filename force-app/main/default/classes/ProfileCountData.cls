@@ -13,6 +13,8 @@ public class ProfileCountData {
         public List<LearnedSkills> LearnedSkills { get; set; }
 
         public List<ProfileCounts> ProfileCounts { get; set; }
+
+        public List<EarnedAwards> EarnedAwards { get; set; }
     }
 
     public class LearnedSkills {
@@ -32,5 +34,30 @@ public class ProfileCountData {
         public String RankImageUrl { get; set; }
         public Integer EarnedPointTotal { get; set; }
         public Integer EarnedBadgeTotal { get; set; }
+    }
+
+    public class EarnedAwards {
+        @AuraEnabled
+        public String AwardType { get; set; }
+
+        @AuraEnabled
+        public String LearningUrl { get; set; }
+
+        @AuraEnabled
+        public Award Award { get; set; }
+    }
+
+    public class Award {
+        @AuraEnabled
+        public String Name { get; set; }
+
+        @AuraEnabled
+        public String Label { get; set; }
+
+        @AuraEnabled
+        public String ImageUrl { get; set; }
+
+        @AuraEnabled
+        public String Id { get; set; }
     }
 }

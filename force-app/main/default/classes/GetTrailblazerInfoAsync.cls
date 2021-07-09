@@ -15,7 +15,7 @@ public with sharing class GetTrailblazerInfoAsync implements Database.Batchable<
     public Database.QueryLocator start(Database.BatchableContext bc){
         return Database.getQueryLocator([SELECT Id, Trailhead_username__c,Points__c, Profile_Photo__c,Rank__c,Rank_Badge_Link__c,Superbadges__c,
                                         Trails__c,Certifications__c,Badges__c, Trailblazer_Since__c
-                                        FROM Contact WHERE Trailhead_username__c != null]);
+                                        FROM Contact WHERE Trailhead_username__c != null AND Id = '0035g000003VCDNAA4']);
     }
 
     public void execute(Database.BatchableContext bc, List<Contact> scope){
@@ -25,15 +25,21 @@ public with sharing class GetTrailblazerInfoAsync implements Database.Batchable<
         Map<String, HttpResponse> mapprofileDataRes = new Map<String, HttpResponse> ();
         Map<String, HttpResponse> mapcertDataRes = new Map<String, HttpResponse> ();
         Map<String, HttpResponse> mapsupperBadgeDataRes = new Map<String, HttpResponse> ();
+        Map<String, List<HttpResponse>> mapBadgeDataRes = new Map<String, List<HttpResponse>> ();
 
+        
         Map<String,ProfileData> mapProfiles = new Map<String,ProfileData>();
         Map<String,ProfileCountData> mapprofileDatas = new Map<String,ProfileCountData>();
         Map<String,CertificationData> mapCerts = new Map<String,CertificationData>();
         Map<String,BadgeData> mapSupBadges = new Map<String,BadgeData>();
+        Map<String,List<BadgeData>> mapBadges = new Map<String,List<BadgeData>>();
+
 
         List<Contact> updateTrailblazer = new List<Contact>();
         List<SupperBadge__c> upSertsupperBadges = new List<SupperBadge__c>();
         List<Certification__c> upSertCerts = new List<Certification__c>();
+        Map<String,Badge__c> mapUpSertBadges = new Map<String,Badge__c>();
+        
 
         for(Contact trail: scope){
             
@@ -213,6 +219,85 @@ public with sharing class GetTrailblazerInfoAsync implements Database.Batchable<
             } 
         }
 
+
+        for(Contact trail: updateTrailblazer ){
+            System.debug('trail.Badges__c=>' + trail.Badges__c);
+            System.debug('trail.Trailhead_username__c=>' + trail.Trailhead_username__c);
+            if(trail.Badges__c > 0 && !String.isBlank(trail.Trailhead_username__c)){
+                Integer loopcount =  (Integer)Math.floor(trail.Badges__c/30) + 1;
+
+                for(Integer i = 1 ; i <= loopcount; i ++){
+                    String baseEndPoint = CalloutConstant.GO_TRAILHEAD_API + trail.Trailhead_username__c;    
+                    HttpResponse badgeDataRes = HttpCallout.makeRequest(setupCalloutGetBadges(baseEndPoint, i));
+
+                    System.debug('badgeDataRes.getBody()=>' + badgeDataRes.getBody());
+
+                    if(badgeDataRes.getStatus() == 'OK'){
+                        if(mapBadgeDataRes.containsKey(trail.Trailhead_username__c)){
+                            mapBadgeDataRes.get(trail.Trailhead_username__c).add(badgeDataRes);
+                        }else {
+                            mapBadgeDataRes.put(trail.Trailhead_username__c, new List<HttpResponse>{badgeDataRes});
+                        }
+                    }
+                }
+            }
+        }
+
+
+        for(Contact trail: updateTrailblazer ){
+            if( !String.isBlank(trail.Trailhead_username__c)){
+                List<HttpResponse> responses = mapBadgeDataRes.get(trail.Trailhead_username__c);
+
+                for(HttpResponse res: responses){
+                    String resBody = res.getBody();            
+                    if (resBody.contains(CalloutConstant.HEROKU_ERROR) || String.isBlank(resBody)) {
+                        System.debug('Application Error, please try again. API may be down.');
+                    }else {
+                        BadgeData data = (BadgeData)JSON.deserialize(resBody.replaceAll('__c', ''), BadgeData.class);  
+                        
+                        if(mapBadges.containsKey(trail.Trailhead_username__c)){
+                            mapBadges.get(trail.Trailhead_username__c).add(data);
+                        }else {
+                            mapBadges.put(trail.Trailhead_username__c, new List<BadgeData>{data});
+                        }                       
+                    }
+                }
+            } 
+        }
+
+
+        for(Contact trail: updateTrailblazer ){
+            if( !String.isBlank(trail.Trailhead_username__c)){
+                List<BadgeData> datas = mapBadges.get(trail.Trailhead_username__c);
+
+                for(BadgeData badgesdata: datas){
+                    if ( badgesdata != null
+                        && badgesdata.value != null 
+                        && !badgesdata.value.isEmpty() 
+                        && badgesdata.value[0].EarnedAwards != null 
+                        && !badgesdata.value[0].EarnedAwards.isEmpty()){
+                        
+                        for (BadgeData.EarnedAwards award : badgesdata.value[0].EarnedAwards) {
+                            if (award.AwardType != 'Superbadge'){
+                                Badge__c badge = new Badge__c();                                
+                                badge.Name = award.Award.Label;
+                                badge.Icon_Link__c = award.Award.ImageUrl;  
+                                badge.Trailblazer__c = trail.Id;  
+                                badge.Date_Sync__c = System.now();                                 
+                                badge.Type__c = award.AwardType;    
+                                badge.BadgeId__c = award.Award.Id + trail.Id;
+
+                                mapUpSertBadges.put(badge.BadgeId__c,badge);
+                            }
+                        }
+
+                    }
+                }
+
+            }
+
+        }
+
         System.debug('updateTrailblazer=>' + updateTrailblazer.size());
         if(updateTrailblazer.size() > 0){
             update updateTrailblazer;
@@ -228,8 +313,13 @@ public with sharing class GetTrailblazerInfoAsync implements Database.Batchable<
         if(upSertCerts.size() > 0){            
             Schema.SObjectField usfield = Certification__c.Fields.CertificationId__c;
             Database.upsert(upSertCerts, usfield, false) ;
-        }
+        }        
 
+        System.debug('mapUpSertBadges=>' + mapUpSertBadges.size());
+        if(mapUpSertBadges.size() > 0){            
+            Schema.SObjectField usfield = Badge__c.Fields.BadgeId__c;
+            Database.upsert(mapUpSertBadges.values(), usfield, true) ;
+        }
         
     }
 
@@ -278,18 +368,14 @@ public with sharing class GetTrailblazerInfoAsync implements Database.Batchable<
         return req;
     }
 
+    public static HttpRequest setupCalloutGetBadges(String baseEndPoint, Integer offset){
+        String restMethod = 'GET';     
+        String endpoint = baseEndPoint + CalloutConstant.BADGES_PATH + '/' + offset;      
+        System.debug(endpoint);            
+        Callout callout = new Callout('', endpoint, restMethod, null);    
 
-    public static ProfileCountData parseProfileCountJSON(String jsBody){
-        try { 
-            ProfileCountData traildata = (ProfileCountData) JSON.deserialize(jsBody.replaceAll('__c', ''), ProfileCountData.class);
+        HttpRequest req = HttpCallout.setupHttpRequest(callout);
 
-            return traildata;
-        } catch (Exception ex) {
-            System.debug('Callout Error' + ex.getMessage());
-            return null;
-        }
+        return req;
     }
-
-
-    
 }
