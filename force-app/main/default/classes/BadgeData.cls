@@ -37,6 +37,6 @@ public class BadgeData {
         public String ImageUrl { get; set; }
 
         @AuraEnabled
-        public String Id { get; set; }
+        public String Id { get; set; }       
     }
 }

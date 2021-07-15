@@ -5,6 +5,7 @@ public class CalloutConstant {
     public static final String JOB_NAME = 'Populate Trailblazers from GetTrailblazerInfoAsync';
     public static final String PROFILE_PATH = '/profile';
     public static final String SUPERBADGES_PATH = '/badges/superbadge';
+    public static final String BADGES_PATH = '/badges';
     public static final String CERTIFICATIONS_PATH = '/certifications';
     public static final String HEROKU_ERROR = 'Application error';
     public static final String SUCCESS = 'success';

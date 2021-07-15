@@ -6,9 +6,10 @@
 */
 
 public with sharing class GetTrailblazerInfoAsync implements Database.Batchable<SObject>, Database.AllowsCallouts{
-    
-    public GetTrailblazerInfoAsync() {
+    private Boolean allowRunRelatedBatchs;
 
+    public GetTrailblazerInfoAsync(Boolean pallowRunRelatedBatchs) {
+        this.allowRunRelatedBatchs = pallowRunRelatedBatchs;
     }
 
 
@@ -25,15 +26,21 @@ public with sharing class GetTrailblazerInfoAsync implements Database.Batchable<
         Map<String, HttpResponse> mapprofileDataRes = new Map<String, HttpResponse> ();
         Map<String, HttpResponse> mapcertDataRes = new Map<String, HttpResponse> ();
         Map<String, HttpResponse> mapsupperBadgeDataRes = new Map<String, HttpResponse> ();
+        Map<String, List<HttpResponse>> mapBadgeDataRes = new Map<String, List<HttpResponse>> ();
 
+        
         Map<String,ProfileData> mapProfiles = new Map<String,ProfileData>();
         Map<String,ProfileCountData> mapprofileDatas = new Map<String,ProfileCountData>();
         Map<String,CertificationData> mapCerts = new Map<String,CertificationData>();
         Map<String,BadgeData> mapSupBadges = new Map<String,BadgeData>();
+        Map<String,List<BadgeData>> mapBadges = new Map<String,List<BadgeData>>();
+
 
         List<Contact> updateTrailblazer = new List<Contact>();
         List<SupperBadge__c> upSertsupperBadges = new List<SupperBadge__c>();
         List<Certification__c> upSertCerts = new List<Certification__c>();
+        Map<String,Badge__c> mapUpSertBadges = new Map<String,Badge__c>();
+        
 
         for(Contact trail: scope){
             
@@ -211,7 +218,7 @@ public with sharing class GetTrailblazerInfoAsync implements Database.Batchable<
 
                 updateTrailblazer.add(trail);
             } 
-        }
+        }        
 
         System.debug('updateTrailblazer=>' + updateTrailblazer.size());
         if(updateTrailblazer.size() > 0){
@@ -228,13 +235,15 @@ public with sharing class GetTrailblazerInfoAsync implements Database.Batchable<
         if(upSertCerts.size() > 0){            
             Schema.SObjectField usfield = Certification__c.Fields.CertificationId__c;
             Database.upsert(upSertCerts, usfield, false) ;
-        }
-
+        }   
         
     }
 
     public void finish(Database.BatchableContext bc){
-
+        if(this.allowRunRelatedBatchs){
+            GetTrailblazerBadges_Batch batch = new GetTrailblazerBadges_Batch();
+            Database.executeBatch(batch, 2);
+        }        
     }
 
     public static HttpRequest setupCalloutGetProfile(String baseEndPoint){
@@ -278,18 +287,14 @@ public with sharing class GetTrailblazerInfoAsync implements Database.Batchable<
         return req;
     }
 
+    public static HttpRequest setupCalloutGetBadges(String baseEndPoint, Integer offset){
+        String restMethod = 'GET';     
+        String endpoint = baseEndPoint + CalloutConstant.BADGES_PATH + '/badge/' + offset;      
+        System.debug(endpoint);            
+        Callout callout = new Callout('', endpoint, restMethod, null);    
 
-    public static ProfileCountData parseProfileCountJSON(String jsBody){
-        try { 
-            ProfileCountData traildata = (ProfileCountData) JSON.deserialize(jsBody.replaceAll('__c', ''), ProfileCountData.class);
+        HttpRequest req = HttpCallout.setupHttpRequest(callout);
 
-            return traildata;
-        } catch (Exception ex) {
-            System.debug('Callout Error' + ex.getMessage());
-            return null;
-        }
+        return req;
     }
-
-
-    
 }
