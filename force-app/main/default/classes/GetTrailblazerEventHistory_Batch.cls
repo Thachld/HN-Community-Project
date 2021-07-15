@@ -1,16 +1,17 @@
 public with sharing class GetTrailblazerEventHistory_Batch implements Database.Batchable<SObject>, Database.AllowsCallouts {
     private Date rundate;
+    private Boolean allowRunRelatedBatchs;
 
-    public GetTrailblazerEventHistory_Batch(Date pdate) {
+    public GetTrailblazerEventHistory_Batch(Date pdate, Boolean pallowRunRelatedBatchs) {
         this.rundate = pdate;
+        this.allowRunRelatedBatchs = pallowRunRelatedBatchs;
     }
 
     public Database.QueryLocator start(Database.BatchableContext bc){
         return Database.getQueryLocator([SELECT Id, Trailhead_username__c, Badges__c, 
                                             Superbadges__c, Points__c, Trails__c, Rank__c
                                         FROM Contact 
-                                        WHERE Trailhead_username__c != null
-                                        AND Id = '0035g000003VCDNAA4']);       
+                                        WHERE Trailhead_username__c != null]);       
     }
 
     public void execute(Database.BatchableContext bc, List<Contact> scope){
@@ -99,8 +100,10 @@ public with sharing class GetTrailblazerEventHistory_Batch implements Database.B
                 //profile Trail Data
                 ProfileCountData profiledata = mapprofileDatas.get(trail.Trailhead_username__c);
                 Integer totalChange = 0;
+                Integer totalPointChange = 0;
                 Integer currentbadge = (Integer)(trail.Badges__c ==null?0:trail.Badges__c);
                 Integer currentsupperbadge = (Integer)(trail.Superbadges__c ==null?0:trail.Superbadges__c);
+                Integer currentPoints = (Integer)(trail.Points__c ==null?0:trail.Points__c);
                 Integer points;
                 Integer badges;
 
@@ -129,6 +132,7 @@ public with sharing class GetTrailblazerEventHistory_Batch implements Database.B
 
                 System.debug('currentbadge=>' + currentbadge + ' | badges=>' + badges + ' | currentsupperbadge=>' + currentsupperbadge + ' | supperbadges=>' + supperbadges);
                 totalChange = (badges -currentbadge)+ (supperbadges - currentsupperbadge);                
+                totalPointChange = points - currentPoints;
 
                 if(totalChange > 0){
                     BadgeData badgesdata = mapBadges.get(trail.Trailhead_username__c);
@@ -144,11 +148,13 @@ public with sharing class GetTrailblazerEventHistory_Batch implements Database.B
 
                             if (totalChange >= count ){                                 
                                 Trail_Activity__c act = new Trail_Activity__c();                                
-                                act.Name = award.Award.Label;
+                                act.Name =  award.Award.Label.left(80);
                                 act.Icon_Link__c = award.Award.ImageUrl;  
                                 act.Trailblazer__c = trail.Id;  
                                 act.Date__c = rundate - 1;                                 
                                 act.Type__c = award.AwardType;     
+                                act.Total_point_change__c = totalPointChange;
+                                act.TrailActivityId__c = award.Award.Id + trail.Id + String.valueOf(this.rundate.year()) + String.valueOf(this.rundate.month()) + String.valueOf(this.rundate.day());
                                 
                                 insertActivites.add(act);
 
@@ -163,13 +169,17 @@ public with sharing class GetTrailblazerEventHistory_Batch implements Database.B
 
         System.debug('insertActivites.size()=>' + insertActivites.size());
         if(insertActivites.size() > 0){
-            insert insertActivites;
+            Schema.SObjectField usfield = Trail_Activity__c.Fields.TrailActivityId__c;
+            Database.upsert(insertActivites, usfield, false) ;
         }
 
     }
 
     public void finish(Database.BatchableContext bc){
-
+        if(this.allowRunRelatedBatchs){
+            GetTrailblazerInfoAsync batch = new GetTrailblazerInfoAsync(this.allowRunRelatedBatchs);
+            Database.executeBatch(batch, 10);
+        }        
     }
 
 

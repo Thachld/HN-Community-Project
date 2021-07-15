@@ -14,7 +14,8 @@ public with sharing class GetTrailblazerInfoAsync_Schedule implements Schedulabl
     }
 
     public void callBatch(){
-        GetTrailblazerInfoAsync batch = new GetTrailblazerInfoAsync();
+        Boolean allowRunRelatedBatchs = true;
+        GetTrailblazerInfoAsync batch = new GetTrailblazerInfoAsync(allowRunRelatedBatchs);
         Database.executeBatch(batch, 10);
     }
 }

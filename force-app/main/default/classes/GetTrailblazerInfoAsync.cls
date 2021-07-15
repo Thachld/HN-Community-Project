@@ -6,16 +6,17 @@
 */
 
 public with sharing class GetTrailblazerInfoAsync implements Database.Batchable<SObject>, Database.AllowsCallouts{
-    
-    public GetTrailblazerInfoAsync() {
+    private Boolean allowRunRelatedBatchs;
 
+    public GetTrailblazerInfoAsync(Boolean pallowRunRelatedBatchs) {
+        this.allowRunRelatedBatchs = pallowRunRelatedBatchs;
     }
 
 
     public Database.QueryLocator start(Database.BatchableContext bc){
         return Database.getQueryLocator([SELECT Id, Trailhead_username__c,Points__c, Profile_Photo__c,Rank__c,Rank_Badge_Link__c,Superbadges__c,
                                         Trails__c,Certifications__c,Badges__c, Trailblazer_Since__c
-                                        FROM Contact WHERE Trailhead_username__c != null AND Id = '0035g000003VCDNAA4']);
+                                        FROM Contact WHERE Trailhead_username__c != null]);
     }
 
     public void execute(Database.BatchableContext bc, List<Contact> scope){
@@ -217,86 +218,7 @@ public with sharing class GetTrailblazerInfoAsync implements Database.Batchable<
 
                 updateTrailblazer.add(trail);
             } 
-        }
-
-
-        for(Contact trail: updateTrailblazer ){
-            System.debug('trail.Badges__c=>' + trail.Badges__c);
-            System.debug('trail.Trailhead_username__c=>' + trail.Trailhead_username__c);
-            if(trail.Badges__c > 0 && !String.isBlank(trail.Trailhead_username__c)){
-                Integer loopcount =  (Integer)Math.floor(trail.Badges__c/30) + 1;
-
-                for(Integer i = 1 ; i <= loopcount; i ++){
-                    String baseEndPoint = CalloutConstant.GO_TRAILHEAD_API + trail.Trailhead_username__c;    
-                    HttpResponse badgeDataRes = HttpCallout.makeRequest(setupCalloutGetBadges(baseEndPoint, i));
-
-                    System.debug('badgeDataRes.getBody()=>' + badgeDataRes.getBody());
-
-                    if(badgeDataRes.getStatus() == 'OK'){
-                        if(mapBadgeDataRes.containsKey(trail.Trailhead_username__c)){
-                            mapBadgeDataRes.get(trail.Trailhead_username__c).add(badgeDataRes);
-                        }else {
-                            mapBadgeDataRes.put(trail.Trailhead_username__c, new List<HttpResponse>{badgeDataRes});
-                        }
-                    }
-                }
-            }
-        }
-
-
-        for(Contact trail: updateTrailblazer ){
-            if( !String.isBlank(trail.Trailhead_username__c)){
-                List<HttpResponse> responses = mapBadgeDataRes.get(trail.Trailhead_username__c);
-
-                for(HttpResponse res: responses){
-                    String resBody = res.getBody();            
-                    if (resBody.contains(CalloutConstant.HEROKU_ERROR) || String.isBlank(resBody)) {
-                        System.debug('Application Error, please try again. API may be down.');
-                    }else {
-                        BadgeData data = (BadgeData)JSON.deserialize(resBody.replaceAll('__c', ''), BadgeData.class);  
-                        
-                        if(mapBadges.containsKey(trail.Trailhead_username__c)){
-                            mapBadges.get(trail.Trailhead_username__c).add(data);
-                        }else {
-                            mapBadges.put(trail.Trailhead_username__c, new List<BadgeData>{data});
-                        }                       
-                    }
-                }
-            } 
-        }
-
-
-        for(Contact trail: updateTrailblazer ){
-            if( !String.isBlank(trail.Trailhead_username__c)){
-                List<BadgeData> datas = mapBadges.get(trail.Trailhead_username__c);
-
-                for(BadgeData badgesdata: datas){
-                    if ( badgesdata != null
-                        && badgesdata.value != null 
-                        && !badgesdata.value.isEmpty() 
-                        && badgesdata.value[0].EarnedAwards != null 
-                        && !badgesdata.value[0].EarnedAwards.isEmpty()){
-                        
-                        for (BadgeData.EarnedAwards award : badgesdata.value[0].EarnedAwards) {
-                            if (award.AwardType != 'Superbadge'){
-                                Badge__c badge = new Badge__c();                                
-                                badge.Name = award.Award.Label;
-                                badge.Icon_Link__c = award.Award.ImageUrl;  
-                                badge.Trailblazer__c = trail.Id;  
-                                badge.Date_Sync__c = System.now();                                 
-                                badge.Type__c = award.AwardType;    
-                                badge.BadgeId__c = award.Award.Id + trail.Id;
-
-                                mapUpSertBadges.put(badge.BadgeId__c,badge);
-                            }
-                        }
-
-                    }
-                }
-
-            }
-
-        }
+        }        
 
         System.debug('updateTrailblazer=>' + updateTrailblazer.size());
         if(updateTrailblazer.size() > 0){
@@ -313,18 +235,15 @@ public with sharing class GetTrailblazerInfoAsync implements Database.Batchable<
         if(upSertCerts.size() > 0){            
             Schema.SObjectField usfield = Certification__c.Fields.CertificationId__c;
             Database.upsert(upSertCerts, usfield, false) ;
-        }        
-
-        System.debug('mapUpSertBadges=>' + mapUpSertBadges.size());
-        if(mapUpSertBadges.size() > 0){            
-            Schema.SObjectField usfield = Badge__c.Fields.BadgeId__c;
-            Database.upsert(mapUpSertBadges.values(), usfield, true) ;
-        }
+        }   
         
     }
 
     public void finish(Database.BatchableContext bc){
-
+        if(this.allowRunRelatedBatchs){
+            GetTrailblazerBadges_Batch batch = new GetTrailblazerBadges_Batch();
+            Database.executeBatch(batch, 2);
+        }        
     }
 
     public static HttpRequest setupCalloutGetProfile(String baseEndPoint){
@@ -370,7 +289,7 @@ public with sharing class GetTrailblazerInfoAsync implements Database.Batchable<
 
     public static HttpRequest setupCalloutGetBadges(String baseEndPoint, Integer offset){
         String restMethod = 'GET';     
-        String endpoint = baseEndPoint + CalloutConstant.BADGES_PATH + '/' + offset;      
+        String endpoint = baseEndPoint + CalloutConstant.BADGES_PATH + '/badge/' + offset;      
         System.debug(endpoint);            
         Callout callout = new Callout('', endpoint, restMethod, null);    
 
